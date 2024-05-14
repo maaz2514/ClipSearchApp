@@ -1,9 +1,9 @@
-# ClipSearchApp
-#ClipSearchApp
+# Text2ImageSearch
 
-Brought to you by the Creators of 'Hello World.py'  .... The CLIP Search App! 
+
+Brought to you by the Creators of 'Hello World.py'  .... The Text2ImageSearch! 
 ## Architecture
-The CLIPSearchApp implementation follows the following architecture:
+The Text2ImageSearch implementation follows the following architecture:
 
 * CLIP (Contrastive Language-Image Pre-Training) Model:
 
@@ -21,7 +21,7 @@ The dataset used for this project comprises advertisement images. This dataset i
 ### Installation
 * Clone the repository
     ```
-    git clone https://github.com/maaz2514/ClipSearchApp.git
+    git clone https://github.com/maaz2514/Text2ImageSearch.git
     ```
 * Create virtual environment and download image dataset. The dataset can be found at `image_dataset`
     ```
@@ -39,8 +39,8 @@ The dataset used for this project comprises advertisement images. This dataset i
      `-d` to run container in detached mode
 * Web UI access: http://0.0.0.0:6333/dashboard
 
-#### Run ClipSearchAp Implementation
-* To use the ClipSearchAp Implementation, run the following command:
+#### Run Text2ImageSearch Implementation
+* To use the Text2ImageSearch Implementation, run the following command:
 
     ```
     python main.py 
@@ -66,11 +66,11 @@ The search system uses a steamlit application to interact and display results.
 ## Scripts Overview
 * `embedder.py`: Contains the `Embedder` class, which generates image and text embeddings using the CLIP model.
 * `qdrantClientUpload.py`: Contains the `UploadQdrant` class, responsible for creating a collection of the image embeddings and uploading it to Qdrant.
-* `app.py`: This script is the Streamlit app script, which serves as the frontend for interacting with the ClipSearchApp system.
+* `app.py`: This script is the Streamlit app script, which serves as the frontend for interacting with the Text2ImageSearch system.
 * `main.py`: This script orchestrates the execution of the above scripts.
 
 ## Query Evaluation
-The results of query evaluations on the ClipSearchApp can be found in the `query_eval/queryEvaluation.md` file. This document provides insights into the performance of the search system across various query types and scenarios.
+The results of query evaluations on the Text2ImageSearch can be found in the `query_eval/queryEvaluation.md` file. This document provides insights into the performance of the search system across various query types and scenarios.
 
 ## Additional Improvements
 while the implemented Streamlit app interface prioritizes simplicity, there remains room for enhancing the user experience to ensure higher quality interactions.
