@@ -1,37 +1,62 @@
-import os
 from typing import Any
 import torch
 from transformers import CLIPModel, CLIPProcessor
-from config import DATASET_PATH
 from PIL import Image
-from torch.utils.data import DataLoader
-from collections import defaultdict
-import pickle
-import torch.multiprocessing as mp
-from queue import Queue
+from torch.utils.data import DataLoader, Dataset
+from utils import get_image_paths, save_embeddings
+from tqdm import tqdm
 
 
+class CustomImageDataset(Dataset):
+    """
+    Creates a custom image dataset.
+    """
 
-def save_embeddings(embeddings, mode):
-    file = open(f"{mode}_embeddings", "wb")
-    pickle.dump(embeddings, file)
-    file.close()
+    def __init__(self, image_paths, processor) -> None:
+        """
+        Initializes the CustomImageDataset.
 
+        Args:
+            image_paths (list): A list of paths to the images.
+            processor ([`CLIPImageProcessor`], *optional*): processor to apply transforms
 
-def load_embeddings(mode):
-    file = open(f"{mode}_embeddings", "rb")
-    embeddings = pickle.load(file)
-    file.close()
-    return embeddings
+        Returns:
+            None
+        """
+        self.image_paths = image_paths
+        self.processor = processor
 
+    def __len__(self) -> int:
+        """
+        Returns:
+            number of images in the dataset.
+        """
+        return len(self.image_paths)
+
+    def __getitem__(self, idx) -> torch.Tensor:
+        """
+        Retrieves an image and processes it.
+
+        Args:
+            idx (int): Index of the image to retrieve.
+
+        Returns:
+            tensor: Processed image tensor.
+        """
+        img = self.image_paths[idx]
+        image = self.processor(images=Image.open(img), return_tensors="pt")
+        return image["pixel_values"].squeeze()
 
 
 class Embedder:
+    """
+    Base class for embedding text or images using the CLIP model.
+    """
+
     def __init__(self) -> None:
-        
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32").to(
-        self.device
+            self.device
         )
         self.processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
 
@@ -39,108 +64,63 @@ class Embedder:
         pass
 
 
-class ImageEmbedder(Embedder):
-    def __init__(self):
-        super().__init__()
-        self.mode = "image"
+class TextEmbedder(Embedder):
+    """
+    Class for embedding text using the CLIP model.
+    """
 
-    def __call__(self, image_paths):
-        embeddings = list()
-        for img_path in image_paths:
-            inputs = self.processor(
-                images=Image.open(img_path), return_tensors="pt"
-            ).to(self.device)
+    def __call__(self, text: str) -> torch.Tensor:
+        """
+        Embeds text using the CLIP model.
+
+        Args:
+            text (str): The text to be embedded.
+
+        Returns:
+            torch.Tensor: The embedded text.
+        """
+        inputs = self.processor(text, return_tensors="pt", padding=True)
+        inputs = inputs.to(self.device)
         with torch.no_grad():
-            embeddings.append(self.model.get_image_features(**inputs).cpu())
-        save_embeddings(embeddings, self.mode)
-        return embeddings
-
-        # batch processing of images
-        # embeddings = BatchProcessImages()
-        # return embeddings
-
-        # Parallel processing of images
-        # embeddings = ParallelProcessImages(images_paths)
-        # return embeddings
+            embedding = self.model.get_text_features(**inputs).cpu()
+        return embedding
 
 
+class ImageEmbedder(Embedder):
+    """
+    Class for embedding images using the CLIP model.
+    """
 
-class BatchProcessImages(ImageEmbedder):
-    def __init__(self, batch_size=32):
-        super().__init__()
+    def __call__(self, image_paths: list, batch_size: int = 32) -> None:
+        """
+        Embeds images using the CLIP model.
+
+        Args:
+            image_paths (list): A list of paths to the images.
+
+        Returns:
+            None
+        """
         self.batch_size = batch_size
 
-    def __call__(self, image_paths):
-        # TODO: computation time is same with and without batches
-        dataloader = DataLoader(image_paths, batch_size=self.batch_size, shuffle=False)
+        my_dataset = CustomImageDataset(image_paths, self.processor)
+        dataloader = DataLoader(my_dataset, batch_size=self.batch_size, shuffle=False)
 
+        num_batches = len(dataloader)
         image_embeddings = list()
-
-        # Process batches of images
-        for batch_paths in dataloader:
-            batch_images = [
-                self.processor(images=Image.open(img_path), return_tensors="pt")
-                for img_path in batch_paths
-            ]
-
-            # Use defaultdict to automatically initialize lists for keys
-            batch_inputs = defaultdict(list)
-            for img_dict in batch_images:
-                for key, value in img_dict.items():
-                    batch_inputs[key].append(value.to(self.device))
-
-            # Convert lists to tensors
-            batch_inputs = {
-                key: torch.stack(value_list).squeeze(1)
-                for key, value_list in batch_inputs.items()
-            }
-
-            with torch.no_grad():
-                batch_embeddings = self.model.get_image_features(**batch_inputs)
-                image_embeddings.append(batch_embeddings.cpu())
-
-            save_embeddings(image_embeddings, self.mode)
-            return image_embeddings
-
-
-class ParallelProcessImages(ImageEmbedder):
-    # Process images in parallel using multiprocessing
-
-    def __call__(self, image_paths, num_workers=4):
-        output_queue = Queue()
-        processes = []
-        for img_path in image_paths:
-            process = mp.Process(
-                target=self.process_image, args=(img_path, output_queue)
-            )
-            process.start()
-            processes.append(process)
-
-        # Wait for all processes to finish
-        for process in processes:
-            process.join()
-
-        # Retrieve image embeddings from the output queue
-        image_embeddings = []
-        while not output_queue.empty():
-            image_embeddings.append(output_queue.get().cpu())
-            save_embeddings(image_embeddings, self.mode)
-        return image_embeddings
-
-    def process_image(self, img_path, output_queue):
-        # Define a worker function to process images
-        image = Image.open(img_path)
-        inputs = self.processor(images=image, return_tensors="pt").to(self.device)
-        with torch.no_grad():
-            image_embedding = self.model.get_image_features(**inputs)
-        output_queue.put(image_embedding)
+        with tqdm(total=num_batches) as pbar:
+            for batch in dataloader:
+                with torch.no_grad():
+                    image_features = self.model.get_image_features(
+                        pixel_values=batch.to(self.device)
+                    )
+                image_embeddings.append(image_features)
+                pbar.update(1)
+        image_embeddings = torch.cat(image_embeddings, dim=0).cpu()
+        save_embeddings(image_embeddings.tolist())
 
 
 if __name__ == "__main__":
-    embd = ImageEmbedder()
-    image_paths = list()
-    for file in os.listdir(DATASET_PATH):
-        image_paths.append(os.path.join(DATASET_PATH, file))
-
-    embd = ImageEmbedder()
-    embd(image_paths)
+    image_paths = get_image_paths()
+    embedder = ImageEmbedder()
+    embedder(image_paths)

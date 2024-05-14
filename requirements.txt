@@ -1,0 +1,10 @@
+torch
+torchvision
+torchaudio
+transformers
+qdrant-client
+opencv-python
+pillow
+seaborn
+streamlit
+tqdm

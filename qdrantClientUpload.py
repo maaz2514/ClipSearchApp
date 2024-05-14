@@ -1,38 +1,53 @@
-import os
 from qdrant_client import QdrantClient, models
-from config import DATASET_PATH, COLLECTION_NAME, QDRANT_URL, QDRANT_API_KEY
-from embedder import ImageEmbedder, load_embeddings
+from config import COLLECTION_NAME, QDRANT_URL, QDRANT_API_KEY
+from utils import get_image_paths, load_embeddings
+from typing import List
 
 
 class UploadQdrant:
+    """
+    A class for uploading image embeddings to a Qdrant collection.
+
+    Attributes:
+        client (QdrantClient): An instance of QdrantClient used to interact with the Qdrant API.
+        image_paths (List[str]): A list of paths to the images.
+        image_embeddings (List[list]): A list of image embeddings to be uploaded.
+    """
+
     def __init__(self) -> None:
         self.client = QdrantClient(
             url=QDRANT_URL,
             api_key=QDRANT_API_KEY,
         )
 
-    def __call__(self, image_paths, load=True):
+    def upload(self, image_paths: List[str]) -> None:
+        """
+        Uploads image embeddings to Qdrant collection.
+
+        Args:
+            image_paths (List[str]): A list of paths to the images.
+
+        Returns:
+            None
+        """
         self.image_paths = image_paths
-        self.create_collection(load)
+        self.create_collection()
         self.upload_collection()
 
-    def create_collection(self, load=True):
-        if load:
-            print(
-                f'Creating collection "{COLLECTION_NAME}" from pre-created Image Embeddings'
-            )
-            self.image_embeddings = load_embeddings(mode="image")
-        else:
-            # Create image embeddings from ImageEmbedder
-            print(
-                f'Creating collection "{COLLECTION_NAME}" from pre-created ImageEmbedder model'
-            )
-            self.image_embeddings = ImageEmbedder(self.image_paths)
+    def create_collection(self) -> None:
+        """
+        Creates a Qdrant collection for image embeddings.
+
+        Returns:
+            None
+        """
+        print(f'Creating collection "{COLLECTION_NAME}" from Image Embeddings')
+        self.image_embeddings = load_embeddings()
 
         self.client.recreate_collection(
             collection_name=COLLECTION_NAME,
             vectors_config=models.VectorParams(
-                size=self.image_embeddings[0].size(1), distance=models.Distance.COSINE
+                size=len(self.image_embeddings[0]), distance=models.Distance.COSINE
             ),
             # to reduce memory usage
             # See: https://github.com/qdrant/qdrant_demo/blob/0c14790d89ab9d2b865aa2832341ab29fd56bb82/qdrant_demo/init_collection_startups.py#L35
@@ -44,14 +59,20 @@ class UploadQdrant:
         )
         print(f'Collection "{COLLECTION_NAME}" created')
 
-    def upload_collection(self):
+    def upload_collection(self) -> None:
+        """
+        Uploads image embeddings to the Qdrant collection.
+
+        Returns:
+            None
+        """
         print(f'Uploading Collection "{COLLECTION_NAME}" to Qdrant')
         for idx, (embedding, path) in enumerate(
             zip(self.image_embeddings, self.image_paths)
         ):
             point = models.PointStruct(
                 id=idx,  # Use loop idx as ID
-                vector=embedding.squeeze().tolist(),
+                vector=embedding,
                 payload={"path": path},
             )
             response = self.client.upsert(
@@ -62,9 +83,6 @@ class UploadQdrant:
 
 
 if __name__ == "__main__":
-    image_paths = list()
-    for file in os.listdir(DATASET_PATH):
-        image_paths.append(os.path.join(DATASET_PATH, file))
-
+    image_paths = get_image_paths()
     qdclient = UploadQdrant()
-    qdclient(image_paths, load=True)
+    qdclient.upload(image_paths)
